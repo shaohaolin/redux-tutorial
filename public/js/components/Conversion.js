@@ -1,7 +1,44 @@
 import React from 'react';
+import { createStore } from 'redux'
 import PropTypes from 'prop-types'
 import axios from 'axios';
 import debounce from 'lodash.debounce';
+
+var defaultState = {
+    originAmount: '0.00'
+};
+
+// Redux reducer function
+function amountReducer(state = defaultState, action){
+  if (action.type === 'CHANGE_ORIGIN_AMOUNT') {
+
+    // The following way is bad practice because it directly modify the state oject, making it mutable.
+    // The rule of redux is do not mutate the state. Any update has to immutable.
+    // When you update the state object directly, redux lost all sort of history for the state updates.
+    // Redux uses this history to do comparision to know if the state has changed.
+    // state.originAmount = action.data;
+
+    // Recommended way to update a state object is to make a copy of the object, and return taht new copy with changes.
+    // This helps to keep thoes updates immutable.
+    return Object.assign({}, state, {originAmount: action.data});
+  }
+  
+  return state;
+}
+
+// Redux store takes reducer as input.
+var store = createStore(amountReducer);
+
+// Pass a callback function to subscribe.
+store.subscribe(function() {
+  console.log('state', store.getState());
+});
+
+// Redux update method to store, it expects object as input.
+store.dispatch({type: 'CHANGE_ORIGIN_AMOUNT', data: '300.65'});
+store.dispatch({type: ''});
+store.dispatch({type: ''});
+
 
 class FeesTable extends React.Component {
     render() {
