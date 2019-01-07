@@ -64,13 +64,13 @@ function amountReducer(state = defaultState, action){
         conversionRate: action.data.xRate,
         destinationAmount: action.data.destAmount
       }
-    case ('RECEIVED_FEES_RATE_SUCCESS'):
+    case ('RECEIVED_FEES_SUCCESS'):
       var newFeeAmount = action.data.feeAmount;
       var newTotal = parseFloat(state.originAmount, 10) + parseFloat(newFeeAmount, 10);
 
       return {
         ...state,
-        feeAmount: feeAmount,
+        feeAmount: newFeeAmount,
         totalCost: newTotal
       }
 
