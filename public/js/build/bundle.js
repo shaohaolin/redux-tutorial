@@ -3707,8 +3707,12 @@ Object.defineProperty(exports, "__esModule", {
   value: true
 });
 exports.changeOriginAmount = changeOriginAmount;
+exports.changeDestAmount = changeDestAmount;
+exports.changeOriginCurrency = changeOriginCurrency;
+exports.changeDestCurrency = changeDestCurrency;
 exports.fetchConversionRate = fetchConversionRate;
 exports.fetchFeeRate = fetchFeeRate;
+exports.fetchConversionRateAndFees = fetchConversionRateAndFees;
 
 var _axios = __webpack_require__(13);
 
@@ -3718,12 +3722,35 @@ var _lodash = __webpack_require__(20);
 
 var _lodash2 = _interopRequireDefault(_lodash);
 
+var _constants = __webpack_require__(95);
+
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 function changeOriginAmount(newAmount) {
   return {
-    type: "CHANGE_ORIGIN_AMOUNT",
+    type: _constants.ActionTypes.CHANGE_ORIGIN_AMOUNT,
     data: newAmount
+  };
+}
+
+function changeDestAmount(newAmount) {
+  return {
+    type: _constants.ActionTypes.CHANGE_DEST_AMOUNT,
+    data: newAmount
+  };
+}
+
+function changeOriginCurrency(newCurrency) {
+  return {
+    type: _constants.ActionTypes.CHANGE_ORIGIN_CURRENCY,
+    data: newCurrency
+  };
+}
+
+function changeDestCurrency(newCurrency) {
+  return {
+    type: _constants.ActionTypes.CHANGE_DEST_CURRENCY,
+    data: newCurrency
   };
 }
 
@@ -3735,16 +3762,16 @@ function fetchConversionRate(payload) {
 }
 
 function _makeConversionAjaxCall(payload, dispatch) {
-  dispatch({ type: "REQUEST_CONVERSION_RATE", data: payload });
+  dispatch({ type: _constants.ActionTypes.REQUEST_CONVERSION_RATE, data: payload });
 
   // ajax call for destination amount
   // originCurrency, destCurrency, originAmount
   _axios2.default.get('/api/conversion', {
     params: payload
   }).then(function (resp) {
-    dispatch({ type: "RECEIVED_CONVERSION_RATE_SUCCESS", data: resp.data });
+    dispatch({ type: _constants.ActionTypes.RECEIVED_CONVERSION_RATE_SUCCESS, data: resp.data });
   }).catch(function (err) {
-    dispatch({ type: "RECEIVED_CONVERSION_RATE_FAILURE", data: err });
+    dispatch({ type: _constants.ActionTypes.RECEIVED_CONVERSION_RATE_FAILURE, data: err });
   });
 }
 
@@ -3758,20 +3785,58 @@ function fetchFeeRate(payload) {
 }
 
 function _makeFeeAjaxCall(payload, dispatch) {
-  dispatch({ type: "REQUEST_FEES", data: payload });
+  dispatch({ type: _constants.ActionTypes.REQUEST_FEES, data: payload });
 
   // ajax call for destination amount
   // originCurrency, destCurrency, originAmount
   _axios2.default.get('/api/fees', {
     params: payload
   }).then(function (resp) {
-    dispatch({ type: "RECEIVED_FEES_SUCCESS", data: resp.data });
-  }).catch(function (err) {
-    dispatch({ type: "RECEIVED_FEES_SUCCESS", data: err });
+    dispatch({ type: _constants.ActionTypes.RECEIVED_FEES_SUCCESS, data: resp.data });
+  }).catch(function (resp) {
+    var msg = getErrorMsg(resp);
+    dispatch({ type: _constants.ActionTypes.RECEIVED_AJAX_CALL_FAILURE, data: { msg: msg, failedCall: 'fees' } });
   });
 }
 
 var makeFeeAjaxCall = (0, _lodash2.default)(_makeFeeAjaxCall, 300);
+
+function fetchConversionRateAndFees(payload) {
+
+  return function (dispatch) {
+    makeConversionAndFeesAjaxCall(payload, dispatch);
+  };
+}
+
+function _makeConversionAjaxAndFeesCall(payload, dispatch) {
+  dispatch({ type: _constants.ActionTypes.REQUEST_CONVERSION_RATE, data: payload });
+
+  // ajax call for destination amount
+  // originCurrency, destCurrency, originAmount
+  _axios2.default.get('/api/conversion', {
+    params: payload
+  }).then(function (resp) {
+    dispatch({ type: _constants.ActionTypes.RECEIVED_CONVERSION_RATE_SUCCESS, data: resp.data });
+
+    var feePayLoad = Object.assign({}, payload, { originAmount: resp.data.originAmount });
+    dispatch(fetchFeeRate(feePayLoad));
+  }).catch(function (err) {
+    dispatch({ type: _constants.ActionTypes.RECEIVED_CONVERSION_RATE_FAILURE, data: err });
+  });
+}
+
+var makeConversionAndFeesAjaxCall = (0, _lodash2.default)(_makeConversionAjaxAndFeesCall, 300);
+
+// we'll handle all failures the same
+function getErrorMsg(resp) {
+  var msg = 'Error. Please try again later.';
+
+  if (resp && resp.request && resp.request.status === 0) {
+    msg = 'Oh no! App appears to be offline.';
+  }
+
+  return msg;
+}
 
 /***/ }),
 /* 50 */
@@ -3951,105 +4016,66 @@ var Conversion = function (_React$Component) {
     function Conversion(props) {
         _classCallCheck(this, Conversion);
 
+        // bind event listeners so 'this' will be available in the handlers
         var _this = _possibleConstructorReturn(this, (Conversion.__proto__ || Object.getPrototypeOf(Conversion)).call(this, props));
 
-        _this.state = {
-            //originAmount: '0.00',
-            originCurrency: 'USD',
-            // destinationAmount: '0.00',
-            destinationCurrency: 'EUR',
-            // feeAmount: 0.00,
-            // conversionRate: 1.5,
-            // totalCost: 0.00,
-            errorMsg: ''
-
-            // bind event listeners so 'this' will be available in the handlers
-        };_this.handleOriginAmountChange = _this.handleOriginAmountChange.bind(_this);
+        _this.handleOriginAmountChange = _this.handleOriginAmountChange.bind(_this);
         _this.handleDestAmountChange = _this.handleDestAmountChange.bind(_this);
-        _this.handleOriginCurrencyChange = _this.handleCurrencyChange.bind(_this, 'origin');
-        _this.handleDestCurrencyChange = _this.handleCurrencyChange.bind(_this, 'destination');
-        _this.handleAjaxFailure = _this.handleAjaxFailure.bind(_this);
+        _this.handleOriginCurrencyChange = _this.handleOriginCurrencyChange.bind(_this);
+        _this.handleDestCurrencyChange = _this.handleDestCurrencyChange.bind(_this);
         return _this;
     }
 
     _createClass(Conversion, [{
         key: 'componentDidMount',
         value: function componentDidMount() {
-            // Add a debounced version of _getDestinationAmount() so we avoid server & UI Thrashing.
-            // See http://stackoverflow.com/questions/23123138/perform-debounce-in-react-js/28046731#28046731
-            this.makeConversionAjaxCall = (0, _lodash2.default)(this._makeConversionAjaxCall, 350);
-            this.makeFeeAjaxCall = (0, _lodash2.default)(this._makeFeeAjaxCall, 350);
-
             this.originAmountInput.focus();
         }
-        // we'll handle all failures the same
-
     }, {
-        key: 'handleAjaxFailure',
-        value: function handleAjaxFailure(resp) {
-            var msg = 'Error. Please try again later.';
+        key: 'handleOriginCurrencyChange',
+        value: function handleOriginCurrencyChange(event) {
+            var newCurrency = event.target.value;
+            this.props.dispatch(actions.changeOriginCurrency(newCurrency));
 
-            if (resp && resp.request && resp.request.status === 0) {
-                msg = 'Oh no! App appears to be offline.';
-            }
+            var payload = {
+                originAmount: this.props.originAmount,
+                originCurrency: newCurrency,
+                destCurrency: this.props.destinationCurrency,
+                calcOriginAmount: false
+            };
 
-            this.setState({
-                errorMsg: msg
-            });
-        }
-        // on success ensure no error message
+            this.props.dispatch(actions.fetchConversionRate(payload));
 
-    }, {
-        key: 'clearErrorMessage',
-        value: function clearErrorMessage() {
-            if (this.state.errorMsg) {
-                this.setState({
-                    errorMsg: ''
-                });
-            }
+            var feePayLoad = {
+                originAmount: this.props.originAmount,
+                originCurrency: newCurrency,
+                destCurrency: this.props.destinationCurrency
+
+                // get the new fee & total amount
+            };this.props.dispatch(actions.fetchFeeRate(feePayLoad));
         }
     }, {
-        key: 'handleCurrencyChange',
-        value: function handleCurrencyChange(currentlyEditing, event) {
-            var _this2 = this;
+        key: 'handleDestCurrencyChange',
+        value: function handleDestCurrencyChange(event) {
+            var newCurrency = event.target.value;
+            this.props.dispatch(actions.changeDestCurrency(newCurrency));
 
-            var obj = {};
-            if (currentlyEditing === 'origin') {
-                obj.originCurrency = event.target.value;
-            } else {
-                obj.destinationCurrency = event.target.value;
-            }
+            var payload = {
+                originAmount: this.props.originAmount,
+                originCurrency: this.props.originCurrency,
+                destCurrency: newCurrency,
+                calcOriginAmount: false
+            };
 
-            // just change both...
-            // we have to use the callback so `this.state` will reflect the proper values
-            // when they are called in _makeConversionAjaxCall()
-            this.setState(obj, function () {
-                // get new dest amount & conversion rates
-                _this2.makeConversionAjaxCall({}, function (resp) {
-                    _this2.clearErrorMessage();
+            this.props.dispatch(actions.fetchConversionRate(payload));
 
-                    _this2.setState({
-                        originAmount: resp.originAmount,
-                        // destinationAmount: resp.destAmount,
-                        destinationAmount: _this2.props.destinationAmount,
-                        conversionRate: resp.xRate
-                    });
+            var feePayLoad = {
+                originAmount: this.props.originAmount,
+                originCurrency: this.props.originCurrency,
+                destCurrency: newCurrency
 
-                    // get the new fee & total amount
-                    _this2.makeFeeAjaxCall({
-                        originAmount: resp.originAmount,
-                        originCurrency: _this2.state.originCurrency,
-                        destCurrency: _this2.state.destinationCurrency
-
-                    }, function (response) {
-                        _this2.setState({
-                            feeAmount: response.feeAmount
-                        });
-
-                        _this2.calcNewTotal();
-                    }, _this2.handleAjaxFailure);
-                });
-            });
+                // get the new fee & total amount
+            };this.props.dispatch(actions.fetchFeeRate(feePayLoad));
         }
     }, {
         key: 'handleOriginAmountChange',
@@ -4064,8 +4090,8 @@ var Conversion = function (_React$Component) {
 
             var payload = {
                 originAmount: newAmount,
-                originCurrency: this.state.originCurrency,
-                destCurrency: this.state.destinationCurrency,
+                originCurrency: this.props.originCurrency,
+                destCurrency: this.props.destinationCurrency,
                 calcOriginAmount: false
             };
 
@@ -4073,8 +4099,8 @@ var Conversion = function (_React$Component) {
 
             var feePayLoad = {
                 originAmount: newAmount,
-                originCurrency: this.state.originCurrency,
-                destCurrency: this.state.destinationCurrency
+                originCurrency: this.props.originCurrency,
+                destCurrency: this.props.destinationCurrency
 
                 // get the new fee & total amount
             };this.props.dispatch(actions.fetchFeeRate(feePayLoad));
@@ -4082,98 +4108,33 @@ var Conversion = function (_React$Component) {
     }, {
         key: 'handleDestAmountChange',
         value: function handleDestAmountChange(event) {
-            var _this3 = this;
-
             var newAmount = event.target.value;
 
             // remove unallowed chars
             newAmount = newAmount.replace(',', '');
-            // optimistic update
-            this.setState({ destinationAmount: newAmount });
 
-            this.makeConversionAjaxCall({
-                currentlyEditing: 'dest',
-                newValue: newAmount
-
-            }, function (resp) {
-                // make ajax call to get the fee amount..
-                var newState = {
-                    conversionRate: resp.xRate,
-                    originAmount: resp.originAmount
-                };
-
-                _this3.setState(newState);
-
-                // get the new fee & total amount
-                _this3.makeFeeAjaxCall({
-                    originAmount: resp.originAmount,
-                    originCurrency: _this3.state.originCurrency,
-                    destCurrency: _this3.state.destinationCurrency
-
-                }, function (resp) {
-                    _this3.setState({
-                        feeAmount: resp.feeAmount
-                    });
-
-                    _this3.calcNewTotal();
-                }, _this3.handleAjaxFailure);
-            });
-        }
-        // this is debounced in `componentDidMount()` as this.makeConversionAjaxCall()
-
-    }, {
-        key: '_makeConversionAjaxCall',
-        value: function _makeConversionAjaxCall(data, successCallback, failureCallback) {
-            var originCurrency = this.state.originCurrency;
-            var destCurrency = this.state.destinationCurrency;
+            // optimistic field updates
+            this.props.dispatch(actions.changeDestAmount(newAmount));
 
             var payload = {
-                originAmount: data.newValue || this.props.originAmount,
-                destAmount: data.newValue || this.state.destAmount,
-                originCurrency: originCurrency,
-                destCurrency: destCurrency,
-                calcOriginAmount: false
+                destAmount: newAmount,
+                originCurrency: this.props.originCurrency,
+                destCurrency: this.props.destinationCurrency,
+                calcOriginAmount: true
+            };
 
-                // determine whether we need to calc origin or dest amount
-            };if (data.currentlyEditing === 'dest') {
-                payload.calcOriginAmount = true;
-            }
-
-            // ajax call for destination amount
-            // originCurrency, destCurrency, originAmount
-            _axios2.default.get('/api/conversion', {
-                params: payload
-            }).then(function (resp) {
-                successCallback(resp.data);
-            }).catch(failureCallback);
-        }
-        // this is debounced in `componentDidMount()`
-
-    }, {
-        key: '_makeFeeAjaxCall',
-        value: function _makeFeeAjaxCall(payload, successCallback, failureCallback) {
-            _axios2.default.get('/api/fees', {
-                params: payload
-            }).then(function (resp) {
-                successCallback(resp.data);
-            }).catch(failureCallback);
-        }
-    }, {
-        key: 'calcNewTotal',
-        value: function calcNewTotal() {
-            var newTotal = parseFloat(this.props.originAmount, 10) + parseFloat(this.state.feeAmount, 10);
-            this.setState({ totalCost: parseFloat(newTotal) });
+            this.props.dispatch(actions.fetchConversionRateAndFees(payload));
         }
     }, {
         key: 'render',
         value: function render() {
-            var _this4 = this;
+            var _this2 = this;
 
-            if (this.state.errorMsg) {
+            if (this.props.errorMsg) {
                 var errorMsg = _react2.default.createElement(
                     'div',
                     { className: 'errorMsg' },
-                    this.state.errorMsg
+                    this.props.errorMsg
                 );
             }
 
@@ -4188,11 +4149,11 @@ var Conversion = function (_React$Component) {
                 ),
                 '\xA0',
                 _react2.default.createElement('input', { className: 'amount-field', ref: function ref(input) {
-                        return _this4.originAmountInput = input;
+                        return _this2.originAmountInput = input;
                     }, onChange: this.handleOriginAmountChange, value: this.props.originAmount }),
                 _react2.default.createElement(
                     'select',
-                    { value: this.state.originCurrency, onChange: this.handleOriginCurrencyChange },
+                    { value: this.props.originCurrency, onChange: this.handleOriginCurrencyChange },
                     _react2.default.createElement(
                         'option',
                         { value: 'USD' },
@@ -4214,7 +4175,7 @@ var Conversion = function (_React$Component) {
                 '\xA0',
                 _react2.default.createElement(
                     'select',
-                    { value: this.state.destinationCurrency, onChange: this.handleDestCurrencyChange },
+                    { value: this.props.destinationCurrency, onChange: this.handleDestCurrencyChange },
                     _react2.default.createElement(
                         'option',
                         { value: 'USD' },
@@ -4235,8 +4196,8 @@ var Conversion = function (_React$Component) {
                 _react2.default.createElement('br', null),
                 _react2.default.createElement('br', null),
                 _react2.default.createElement(_FeesTable2.default, {
-                    originCurrency: this.state.originCurrency,
-                    destinationCurrency: this.state.destinationCurrency,
+                    originCurrency: this.props.originCurrency,
+                    destinationCurrency: this.props.destinationCurrency,
                     conversionRate: this.props.conversionRate,
                     fee: this.props.feeAmount,
                     total: this.props.totalCost
@@ -4253,11 +4214,14 @@ var Conversion = function (_React$Component) {
 
 exports.default = (0, _reactRedux.connect)(function (state, props) {
     return {
-        originAmount: state.originAmount,
-        destinationAmount: state.destinationAmount,
-        conversionRate: state.conversionRate,
-        feeAmount: state.feeAmount,
-        totalCost: state.totalCost
+        originAmount: state.amount.originAmount,
+        originCurrency: state.amount.originCurrency,
+        destinationAmount: state.amount.destinationAmount,
+        destinationCurrency: state.amount.destinationCurrency,
+        conversionRate: state.amount.conversionRate,
+        feeAmount: state.amount.feeAmount,
+        totalCost: state.amount.totalCost,
+        errorMsg: state.error.errorMsg
     };
 })(Conversion);
 
@@ -4272,8 +4236,6 @@ Object.defineProperty(exports, "__esModule", {
   value: true
 });
 
-var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
-
 var _redux = __webpack_require__(28);
 
 var _reduxLogger = __webpack_require__(84);
@@ -4282,91 +4244,18 @@ var _reduxThunk = __webpack_require__(85);
 
 var _reduxThunk2 = _interopRequireDefault(_reduxThunk);
 
+var _index = __webpack_require__(98);
+
+var _index2 = _interopRequireDefault(_index);
+
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-var defaultState = {
-  originAmount: '0.00',
-  destinationAmount: '0.00',
-  conversionRate: 1.5,
-  feeAmount: 0.00,
-  totalCost: 0.00
-};
-
-// Redux reducer function
-// dispatch() -> reducer(amountReducer) -> return state -> new redux state
-function amountReducer() {
-  var state = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : defaultState;
-  var action = arguments[1];
-
-  // if (action.type === 'CHANGE_ORIGIN_AMOUNT') {
-
-  //   // The following way is bad practice because it directly modify the state oject, making it mutable.
-  //   // The rule of redux is do not mutate the state. Any update has to immutable.
-  //   // When you update the state object directly, redux lost all sort of history for the state updates.
-  //   // Redux uses this history to do comparision to know if the state has changed.
-  //   // state.originAmount = action.data;
-
-  //   // Recommended way to update a state object is to make a copy of the object, and return taht new copy with changes.
-  //   // This helps to keep thoes updates immutable.
-  //   // Object spread sytax
-  //   return {
-  //     ...state,
-  //     originAmount: action.data
-  //   }
-  // }
-
-  // else if (action.type === 'RECEIVED_CONVERSION_RATE_SUCCESS') {
-  //   return {
-  //     ...state,
-  //     conversionRate: action.data.xRate,
-  //     destinationAmount: action.data.destAmount
-  //   }
-  // }
-
-  // else if (action.type === 'RECEIVED_FEES_RATE_SUCCESS') {
-
-  //   var newFeeAmount = action.data.feeAmount;
-  //   var newTotal = parseFloat(state.originAmount, 10) + parseFloat(newFeeAmount, 10);
-
-  //   return {
-  //     ...state,
-  //     feeAmount: feeAmount,
-  //     totalCost: newTotal
-  //   }
-  // }
-
-  // return state;
-
-  switch (action.type) {
-    case 'CHANGE_ORIGIN_AMOUNT':
-      return _extends({}, state, {
-        originAmount: action.data
-      });
-    case 'RECEIVED_CONVERSION_RATE_SUCCESS':
-      return _extends({}, state, {
-        conversionRate: action.data.xRate,
-        destinationAmount: action.data.destAmount
-      });
-    case 'RECEIVED_FEES_SUCCESS':
-      var newFeeAmount = action.data.feeAmount;
-      var newTotal = parseFloat(state.originAmount, 10) + parseFloat(newFeeAmount, 10);
-
-      return _extends({}, state, {
-        feeAmount: newFeeAmount,
-        totalCost: newTotal
-      });
-
-    default:
-      return state;
-  }
-}
 
 var logger = (0, _reduxLogger.createLogger)({
   collapsed: true
 });
 
 // Redux store takes reducer as input.
-var store = (0, _redux.createStore)(amountReducer, (0, _redux.applyMiddleware)(_reduxThunk2.default, logger));
+var store = (0, _redux.createStore)(_index2.default, (0, _redux.applyMiddleware)(_reduxThunk2.default, logger));
 
 exports.default = store;
 
@@ -30599,6 +30488,276 @@ module.exports = function(originalModule) {
 
 module.exports = __webpack_require__(30);
 
+
+/***/ }),
+/* 95 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.ActionTypes = undefined;
+
+var _keymirror = __webpack_require__(96);
+
+var _keymirror2 = _interopRequireDefault(_keymirror);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+var ActionTypes = exports.ActionTypes = (0, _keymirror2.default)({
+  CHANGE_ORIGIN_AMOUNT: null,
+  CHANGE_DEST_AMOUNT: null,
+  CHANGE_ORIGIN_CURRENCY: null,
+  CHANGE_DEST_CURRENCY: null,
+
+  REQUEST_CONVERSION_RATE: null,
+  RECEIVED_CONVERSION_RATE_SUCCESS: null,
+  RECEIVED_CONVERSION_RATE_FAILURE: null,
+
+  REQUEST_FEES: null,
+  RECEIVED_FEES_SUCCESS: null,
+
+  RECEIVED_AJAX_CALL_FAILURE: null
+});
+
+/***/ }),
+/* 96 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+/**
+ * Copyright 2013-2014 Facebook, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ */
+
+
+
+/**
+ * Constructs an enumeration with keys equal to their value.
+ *
+ * For example:
+ *
+ *   var COLORS = keyMirror({blue: null, red: null});
+ *   var myColor = COLORS.blue;
+ *   var isColorValid = !!COLORS[myColor];
+ *
+ * The last line could not be performed if the values of the generated enum were
+ * not equal to their keys.
+ *
+ *   Input:  {key1: val1, key2: val2}
+ *   Output: {key1: key1, key2: key2}
+ *
+ * @param {object} obj
+ * @return {object}
+ */
+var keyMirror = function(obj) {
+  var ret = {};
+  var key;
+  if (!(obj instanceof Object && !Array.isArray(obj))) {
+    throw new Error('keyMirror(...): Argument must be an object.');
+  }
+  for (key in obj) {
+    if (!obj.hasOwnProperty(key)) {
+      continue;
+    }
+    ret[key] = key;
+  }
+  return ret;
+};
+
+module.exports = keyMirror;
+
+
+/***/ }),
+/* 97 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
+
+var _constants = __webpack_require__(95);
+
+var defaultState = {
+  originAmount: '0.00',
+  originCurrency: 'USD',
+  destinationAmount: '0.00',
+  destinationCurrency: 'EUR',
+  conversionRate: 1.5,
+  feeAmount: 0.00,
+  totalCost: 0.00
+};
+
+// Redux reducer function
+// dispatch() -> reducer(amountReducer) -> return state -> new redux state
+function amount() {
+  var state = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : defaultState;
+  var action = arguments[1];
+
+  // if (action.type === 'CHANGE_ORIGIN_AMOUNT') {
+
+  //   // The following way is bad practice because it directly modify the state oject, making it mutable.
+  //   // The rule of redux is do not mutate the state. Any update has to immutable.
+  //   // When you update the state object directly, redux lost all sort of history for the state updates.
+  //   // Redux uses this history to do comparision to know if the state has changed.
+  //   // state.originAmount = action.data;
+
+  //   // Recommended way to update a state object is to make a copy of the object, and return taht new copy with changes.
+  //   // This helps to keep thoes updates immutable.
+  //   // Object spread sytax
+  //   return {
+  //     ...state,
+  //     originAmount: action.data
+  //   }
+  // }
+
+  // else if (action.type === 'RECEIVED_CONVERSION_RATE_SUCCESS') {
+  //   return {
+  //     ...state,
+  //     conversionRate: action.data.xRate,
+  //     destinationAmount: action.data.destAmount
+  //   }
+  // }
+
+  // else if (action.type === 'RECEIVED_FEES_RATE_SUCCESS') {
+
+  //   var newFeeAmount = action.data.feeAmount;
+  //   var newTotal = parseFloat(state.originAmount, 10) + parseFloat(newFeeAmount, 10);
+
+  //   return {
+  //     ...state,
+  //     feeAmount: feeAmount,
+  //     totalCost: newTotal
+  //   }
+  // }
+
+  // return state;
+
+  switch (action.type) {
+    case _constants.ActionTypes.CHANGE_ORIGIN_AMOUNT:
+      return _extends({}, state, {
+        originAmount: action.data
+      });
+    case _constants.ActionTypes.CHANGE_DEST_AMOUNT:
+      return _extends({}, state, {
+        destinationAmount: action.data
+      });
+    case _constants.ActionTypes.CHANGE_ORIGIN_CURRENCY:
+      return _extends({}, state, {
+        originCurrency: action.data
+      });
+    case _constants.ActionTypes.CHANGE_DEST_CURRENCY:
+      return _extends({}, state, {
+        destinationCurrency: action.data
+      });
+    case _constants.ActionTypes.RECEIVED_CONVERSION_RATE_SUCCESS:
+      return _extends({}, state, {
+        conversionRate: action.data.xRate,
+        originAmount: action.data.originAmount,
+        destinationAmount: action.data.destAmount
+      });
+    case _constants.ActionTypes.RECEIVED_FEES_SUCCESS:
+      var newFeeAmount = action.data.feeAmount;
+      var newTotal = parseFloat(state.originAmount, 10) + parseFloat(newFeeAmount, 10);
+
+      return _extends({}, state, {
+        feeAmount: newFeeAmount,
+        totalCost: newTotal
+      });
+
+    default:
+      return state;
+  }
+}
+
+exports.default = amount;
+
+/***/ }),
+/* 98 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _redux = __webpack_require__(28);
+
+var _amount = __webpack_require__(97);
+
+var _amount2 = _interopRequireDefault(_amount);
+
+var _error = __webpack_require__(99);
+
+var _error2 = _interopRequireDefault(_error);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+exports.default = (0, _redux.combineReducers)({
+  amount: _amount2.default,
+  error: _error2.default
+});
+
+/***/ }),
+/* 99 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
+
+var _constants = __webpack_require__(95);
+
+var defaultState = {
+  errorMsg: ''
+};
+
+function error() {
+  var state = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : defaultState;
+  var action = arguments[1];
+
+  switch (action.type) {
+    case _constants.ActionTypes.RECEIVED_AJAX_CALL_FAILURE:
+      return _extends({}, state, {
+        errorMsg: action.data.msg
+      });
+    case _constants.ActionTypes.RECEIVED_FEES_SUCCESS:
+      return _extends({}, state, {
+        errorMsg: ''
+      });
+    default:
+      return state;
+  }
+}
+
+exports.default = error;
 
 /***/ })
 /******/ ]);
